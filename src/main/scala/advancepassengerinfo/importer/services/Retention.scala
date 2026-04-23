@@ -20,20 +20,27 @@ object Retention {
     val log = LoggerFactory.getLogger(getClass)
 
     () =>
-      maybeDeletableDate().flatMap {
-        case Some(date) =>
-          log.info(s"Deleting data for $date")
-          val start = System.currentTimeMillis()
-          val eventualTuple = deleteForDate(date)
-          eventualTuple.onComplete {
-            case Success((deletedManifests, deletedJsons, deletedZips)) =>
-              log.info(s"Deleted $deletedZips zips, $deletedJsons jsons, $deletedManifests manifests. Took ${System.currentTimeMillis() - start}ms")
-            case Failure(exception) =>
-              log.error(s"Failed to delete data: ${exception.getMessage}")
-          }
-          eventualTuple
-        case _ =>
-          Future.successful((0, 0, 0))
-      }
+      maybeDeletableDate()
+        .recoverWith {
+          case exception =>
+            log.error(s"Failed to determine deletable date: ${exception.getMessage}", exception)
+            Future.failed(exception)
+        }
+        .flatMap {
+          case Some(date) =>
+            log.info(s"Deleting data for $date")
+            val start = System.currentTimeMillis()
+            val eventualTuple = deleteForDate(date)
+            eventualTuple.onComplete {
+              case Success((deletedManifests, deletedJsons, deletedZips)) =>
+                log.info(s"Deleted $deletedZips zips, $deletedJsons jsons, $deletedManifests manifests. Took ${System.currentTimeMillis() - start}ms")
+              case Failure(exception) =>
+                log.error(s"Failed to delete data: ${exception.getMessage}", exception)
+            }
+            eventualTuple
+          case None =>
+            log.debug("No deletable data found for the current retention threshold")
+            Future.successful((0, 0, 0))
+        }
   }
 }

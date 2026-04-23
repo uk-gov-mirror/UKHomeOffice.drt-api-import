@@ -96,8 +96,12 @@ object Application extends App {
   val maxJsonDeletionBatchSize = config.getInt("app.max-json-deletion-batch-size")
   val deleteOldData = Retention.deleteOldData(oldestData, (date: SDate) => retentionDao.deleteForDate(date, maxJsonDeletionBatchSize))
 
-  if (config.getBoolean("app.purge-old-data"))
+  if (config.getBoolean("app.purge-old-data")) {
+    log.info(s"Retention scheduler enabled: interval=1 minute, retainDataForYears=$retainDataForYears, maxJsonDeletionBatchSize=$maxJsonDeletionBatchSize")
     actorSystem.scheduler.scheduleAtFixedRate(0.seconds, 1.minute)(() => Await.ready(deleteOldData(), 60.minutes))
+  } else {
+    log.info("Retention scheduler disabled via app.purge-old-data=false")
+  }
 
   sys.addShutdownHook {
     PostgresDb.close()
